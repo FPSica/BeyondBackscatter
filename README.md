@@ -1,4 +1,4 @@
-# Beyond Backscatter: InSAR Coherence from Detected SAR Images
+# Beyond Backscatter: InSAR coherence from detected SAR images
 
 Deep learning framework for estimating InSAR coherence directly from detected SAR imagery, enabling large-scale coherence generation from SAR products available through Google Earth Engine.
 
