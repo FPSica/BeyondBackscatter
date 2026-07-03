@@ -19,7 +19,7 @@ The notebook:
 5. searches Sentinel-1 GRD acquisitions for two date windows;
 6. downloads linear sigma0 GeoTIFFs from GEE;
 7. loads the GRD/GEE model from Hugging Face Hub, Google Drive, or a local directory;
-8. runs tiled inference with `model.eval()` and `torch.no_grad()`;
+8. runs tiled TensorFlow/Keras inference with the released GRD/GEE Keras weights;
 9. exports predicted coherence and SAR/coherence RGB visualizations.
 
 The notebook uses Sentinel-1 GRD data from GEE. It does not use the SLC inference path.
@@ -29,33 +29,39 @@ The notebook uses Sentinel-1 GRD data from GEE. It does not use the SLC inferenc
 The default notebook settings expect:
 
 ```text
-checkpoint.pth
+model.weights.h5
 config.yaml
 README.md
-model.py or equivalent model source file
 normalization/statistics file if required
 ```
 
-`config.yaml` should define the exact GRD/GEE model class and preprocessing. Example:
+The TensorFlow/Keras ResUNet architecture used by the notebook lives in the GitHub repository at `src/colab_grd_gee/tf_model.py`, so the default Hugging Face model package does not need a `model.py` file. The loader first tries standard Keras weight loading and falls back to legacy Keras H5 by-name loading for newer Keras runtimes.
+
+`config.yaml` should define the exact GRD/GEE model and preprocessing. Example:
 
 ```yaml
-model:
-  module: model
-  class_name: Back2CohGRDModel
-  kwargs: {}
-strict_load: true
+framework: tensorflow
+weights_filename: model.weights.h5
+architecture:
+  name: resunet
+  input_shape: [128, 128, 2]
+  output_channels: 2
 preprocessing:
   db_min: -20
   db_max: 0
   channel_order: [t1, t2]
+  input_scale: linear_sigma0_from_gee
+  model_scale: db_clipped_normalized
 tiling:
   patch_size: 128
   stride: 32
   batch_size: 8
   aggregation: kaiser
+output:
+  name: coherence
+  range: [0, 1]
+  channel: 0
 ```
-
-If the checkpoint is a complete serialized `torch.nn.Module`, the model class fields are optional. State-dict checkpoints should include source code and model class information in `config.yaml`.
 
 ## Upload Model Files To Hugging Face
 
@@ -75,7 +81,7 @@ python scripts/upload_model_to_hf.py \
   --private false
 ```
 
-The helper uploads only model-related files such as `.pth`, `.pt`, `.ckpt`, `.yaml`, `.yml`, `.json`, `README.md`, config files, and normalization/statistics files. It excludes outputs, GeoTIFFs, NumPy arrays, notebooks, hidden environment files, token files, credentials, and caches.
+The helper uploads only model-related files such as `.h5`, `.keras`, `.yaml`, `.yml`, `.json`, `README.md`, config files, and normalization/statistics files. It excludes outputs, GeoTIFFs, NumPy arrays, notebooks, hidden environment files, token files, credentials, and caches.
 
 The script does not hardcode tokens. It relies on `hf auth login`, environment variables, or the existing Hugging Face cache.
 

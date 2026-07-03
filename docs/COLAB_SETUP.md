@@ -85,9 +85,10 @@ Default:
 
 ```python
 MODEL_SOURCE = "huggingface"
+MODEL_FRAMEWORK = "tensorflow"
 HF_REPO_ID = "FPSica/beyond-backscatter-grd-gee"
 HF_REVISION = "main"
-HF_CHECKPOINT_FILENAME = "checkpoint.pth"
+HF_WEIGHTS_FILENAME = "model.weights.h5"
 HF_CONFIG_FILENAME = "config.yaml"
 ```
 
@@ -116,29 +117,38 @@ LOCAL_MODEL_DIR = "/content/BeyondBackscatter/model"
 The default model package expects:
 
 ```text
-checkpoint.pth
+model.weights.h5
 config.yaml
 README.md
-model.py or equivalent model source
 normalization/statistics file if required
 ```
 
-`config.yaml` should identify the model class when the checkpoint is a state dict. Example:
+The TensorFlow/Keras ResUNet architecture is included in the GitHub repository under `src/colab_grd_gee/tf_model.py`; the Hugging Face repo does not need a `model.py` file for the default workflow. The loader first tries standard Keras weight loading and falls back to legacy Keras H5 by-name loading for newer Keras runtimes.
+
+`config.yaml` should describe the real GRD/GEE model and preprocessing. Example:
 
 ```yaml
-model:
-  module: model
-  class_name: Back2CohGRDModel
-  kwargs: {}
+framework: tensorflow
+weights_filename: model.weights.h5
+architecture:
+  name: resunet
+  input_shape: [128, 128, 2]
+  output_channels: 2
 preprocessing:
   db_min: -20
   db_max: 0
   channel_order: [t1, t2]
+  input_scale: linear_sigma0_from_gee
+  model_scale: db_clipped_normalized
 tiling:
   patch_size: 128
   stride: 32
   batch_size: 8
   aggregation: kaiser
+output:
+  name: coherence
+  range: [0, 1]
+  channel: 0
 ```
 
 ## Outputs

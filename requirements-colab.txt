@@ -3,7 +3,8 @@ geemap
 rasterio
 numpy
 matplotlib
-torch
+tensorflow
+h5py
 huggingface_hub
 PyYAML
 ipywidgets

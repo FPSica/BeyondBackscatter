@@ -26,20 +26,19 @@ Recommended public model repository:
 
 https://huggingface.co/FPSica/beyond-backscatter-grd-gee
 
-The notebook expects the Hugging Face model repository to contain a GRD/GEE checkpoint and configuration, by default:
+The notebook expects the Hugging Face model repository to contain the real GRD/GEE TensorFlow/Keras weights and configuration, by default:
 
-- `checkpoint.pth`
+- `model.weights.h5`
 - `config.yaml`
-- model source file(s), for example `model.py`, if `config.yaml` points to a model class
-- optional normalization/statistics files if required by the released model
+- `README.md`
 
-If the model repository does not exist yet, set `HF_REPO_ID` in the notebook to the correct released model repository once it is available.
+The matching TensorFlow/Keras ResUNet architecture is included in this GitHub repository under `src/colab_grd_gee/tf_model.py`. The loader first tries standard Keras weight loading and falls back to legacy Keras H5 by-name loading for newer Keras runtimes.
 
-🚧 **Work in progress:** the repository is currently under construction, and the trained models will be released soon.
+If you mirror or replace the model repository, set `HF_REPO_ID` in the notebook to the correct released model repository.
+
+🚧 **Work in progress:** this repository is still evolving, and additional experiments, documentation, and utilities may be added over time.
 
 📑 **Presentation slides:** available in the `slides/` directory of this repository.
 
 📄 **Preprint available on Arxiv:**
 https://www.researchgate.net/publication/406351207_Beyond_Backscatter_InSAR_coherence_from_detected_SAR_images
-
-

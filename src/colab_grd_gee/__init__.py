@@ -5,6 +5,7 @@ __all__ = [
     "inference",
     "io_utils",
     "model_loader",
+    "tf_model",
     "visualization",
 ]
 

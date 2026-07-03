@@ -8,7 +8,7 @@ from pathlib import Path
 
 from huggingface_hub import HfApi
 
-ALLOWED_SUFFIXES = {".pth", ".pt", ".ckpt", ".yaml", ".yml", ".json", ".md", ".py"}
+ALLOWED_SUFFIXES = {".h5", ".keras", ".pb", ".yaml", ".yml", ".json", ".md"}
 BLOCKED_SUFFIXES = {".tif", ".tiff", ".npy", ".npz", ".zip", ".ipynb", ".env"}
 BLOCKED_DIRS = {"outputs", "data", "__pycache__", ".git", ".ipynb_checkpoints", ".cache", "hf_cache"}
 BLOCKED_NAME_PARTS = {"token", "secret", "password", "credential", "credentials", "private_key", ".env"}
@@ -38,6 +38,8 @@ def is_safe_model_file(path: Path, model_dir: Path) -> bool:
         return False
     if path.name.startswith("."):
         return False
+    if "variables" in parts_lower and name_lower.startswith("variables."):
+        return True
     if suffix in ALLOWED_SUFFIXES:
         return True
     return any(part in name_lower for part in ALLOWED_NAME_PARTS)

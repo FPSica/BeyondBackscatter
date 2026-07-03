@@ -1,11 +1,10 @@
-"""GRD/GEE input preparation and tiled PyTorch inference."""
+"""GRD/GEE input preparation and tiled TensorFlow/Keras inference."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import numpy as np
-import torch
 
 from .model_loader import ModelBundle
 
@@ -34,7 +33,11 @@ def linear_sigma0_to_model_inputs(
     secondary_linear: np.ndarray,
     config: dict[str, Any] | None = None,
 ):
-    """Convert two linear sigma0 images to the GRD/GEE model tensor channels."""
+    """Convert two linear sigma0 images to GRD/GEE model tensor channels.
+
+    Returns CHW layout for convenient channel inspection. Tiled inference
+    converts patches to NHWC before calling the TensorFlow/Keras model.
+    """
 
     cfg = preprocessing_config(config)
     primary = np.asarray(primary_linear, dtype=np.float32)
@@ -83,14 +86,17 @@ def _extract_model_output(output):
             output = next(iter(output.values()))
     elif isinstance(output, (tuple, list)):
         output = output[0]
+    if hasattr(output, "numpy"):
+        output = output.numpy()
+    output = np.asarray(output)
     if output.ndim == 4:
-        if output.shape[1] <= 4:
+        if output.shape[-1] <= 4:
+            output = output[..., 0]
+        elif output.shape[1] <= 4:
             output = output[:, 0, :, :]
-        else:
-            output = output[:, :, :, 0]
     if output.ndim != 3:
-        raise ValueError(f"Expected model output with shape [N,H,W] or [N,C,H,W], got {tuple(output.shape)}.")
-    return output
+        raise ValueError(f"Expected model output with shape [N,H,W] or [N,H,W,C], got {tuple(output.shape)}.")
+    return output.astype(np.float32)
 
 
 def predict_tiled(
@@ -102,10 +108,9 @@ def predict_tiled(
     stride: int | None = None,
     batch_size: int | None = None,
 ):
-    """Run tiled GRD/GEE coherence inference with overlap aggregation."""
+    """Run tiled TensorFlow/Keras GRD/GEE coherence inference."""
 
     model = model_bundle.model
-    model.eval()
     cfg = preprocessing_config(model_bundle.config)
     patch_size = int(patch_size or cfg["patch_size"])
     stride = int(stride or cfg["stride"])
@@ -126,18 +131,16 @@ def predict_tiled(
     prediction = np.zeros((padded_rows, padded_cols), dtype=np.float32)
     weights = np.zeros((padded_rows, padded_cols), dtype=np.float32)
 
-    with torch.no_grad():
-        for offset in range(0, len(starts), batch_size):
-            batch_starts = starts[offset : offset + batch_size]
-            batch_np = np.stack(
-                [tensor[:, r : r + patch_size, c : c + patch_size] for r, c in batch_starts],
-                axis=0,
-            )
-            batch = torch.from_numpy(batch_np).to(model_bundle.device, non_blocking=True)
-            out = _extract_model_output(model(batch)).detach().float().cpu().numpy()
-            for patch, (r, c) in zip(out, batch_starts):
-                prediction[r : r + patch_size, c : c + patch_size] += patch.astype(np.float32) * window
-                weights[r : r + patch_size, c : c + patch_size] += window
+    for offset in range(0, len(starts), batch_size):
+        batch_starts = starts[offset : offset + batch_size]
+        batch_np = np.stack(
+            [np.moveaxis(tensor[:, r : r + patch_size, c : c + patch_size], 0, -1) for r, c in batch_starts],
+            axis=0,
+        ).astype(np.float32)
+        out = _extract_model_output(model(batch_np, training=False))
+        for patch, (r, c) in zip(out, batch_starts):
+            prediction[r : r + patch_size, c : c + patch_size] += patch.astype(np.float32) * window
+            weights[r : r + patch_size, c : c + patch_size] += window
 
     coherence = prediction / np.maximum(weights, EPS)
     coherence = coherence[:rows, :cols]
@@ -145,7 +148,8 @@ def predict_tiled(
     if mask is not None:
         coherence = coherence.copy()
         coherence[np.asarray(mask, dtype=bool)] = np.nan
-    debug["tensor_shape"] = (channels, rows, cols)
+    debug["tensor_shape_chw"] = (channels, rows, cols)
+    debug["model_patch_layout"] = "NHWC"
     debug["patch_count"] = len(starts)
     debug["patch_size"] = patch_size
     debug["stride"] = stride
