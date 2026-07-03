@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Colab / local outputs
+outputs/
+colab_outputs/
+drive/
+
+# Data and geospatial products
+data/
+*.tif
+*.tiff
+*.npy
+*.npz
+*.zip
+
+# Model checkpoints and exported model artifacts
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.h5
+*.keras
+
+# Credentials, tokens, and private local configuration
+.env
+.env.*
+*token*
+*credentials*
+*credential*
+earthengine/
+earthengine-credentials/
+service-account*.json
+google-credentials*.json
+application_default_credentials.json
+
+# Hugging Face and cloud caches
+.cache/
+hf_cache/
+.huggingface/
+
+# OS/editor files
+.DS_Store
+._*
+Thumbs.db
+.vscode/
+.idea/
