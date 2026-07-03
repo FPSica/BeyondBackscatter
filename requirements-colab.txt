@@ -1,0 +1,10 @@
+earthengine-api
+geemap
+rasterio
+numpy
+matplotlib
+torch
+huggingface_hub
+PyYAML
+ipywidgets
+nbformat
