@@ -174,11 +174,9 @@ Important files include:
 - `outputs/coherence_pred.png`
 - `outputs/coherence_pred.npy`
 - `outputs/rgb_diagnostic.png`
-- `outputs/rgb_pseudo_natural.png`
-- `outputs/rgb_pseudo_natural.tif`
 - `outputs/beyond_backscatter_outputs.zip`
 
-The RGB files are SAR/coherence visualization products. They are not true optical images.
+The RGB file is a SAR/coherence diagnostic visualization product. It is not a true optical image.
 
 Predicted coherence is displayed with a grayscale color map from 0 to 1.
 

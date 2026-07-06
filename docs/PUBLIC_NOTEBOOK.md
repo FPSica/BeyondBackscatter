@@ -21,7 +21,7 @@ The notebook:
 7. verifies shared valid coverage and downloads linear sigma0 GeoTIFFs over the common area;
 8. loads the GRD/GEE model from Hugging Face Hub, Google Drive, or a local directory;
 9. runs tiled TensorFlow/Keras inference with the released GRD/GEE Keras weights;
-10. exports grayscale predicted coherence and SAR/coherence RGB visualizations.
+10. exports grayscale predicted coherence and a diagnostic SAR/coherence RGB visualization.
 
 The notebook uses Sentinel-1 GRD data from GEE. It does not use the SLC inference path.
 It does not compute or recommend temporal baselines.
@@ -116,4 +116,4 @@ For private Hugging Face repositories, set `HF_TOKEN` through Colab secrets or a
 
 Predicted coherence is displayed in grayscale with values clipped to `[0, 1]`.
 
-The pseudo-natural RGB output is a SAR/coherence visualization derived from backscatter amplitudes and predicted coherence. It is not a true optical image and should not be interpreted as optical reflectance.
+The diagnostic RGB output is a SAR/coherence visualization derived from backscatter amplitudes and predicted coherence. It is not a true optical image and should not be interpreted as optical reflectance.
