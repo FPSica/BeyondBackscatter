@@ -53,6 +53,8 @@ DATE2_END   = "2025-06-25"
 
 The notebook searches `COPERNICUS/S1_GRD` for matching acquisitions and prints image index, image ID, date/time, orbit pass, relative orbit, platform, polarization list, instrument mode, and approximate ROI coverage. The user then selects exactly one image for period 1 and exactly one image for period 2. `RELATIVE_ORBIT` can stay empty; when it is empty, no relative-orbit filter is applied.
 
+Earth Engine direct GeoTIFF downloads are limited to roughly 48 MiB per request. The notebook checks the estimated download size before requesting the GeoTIFF URLs. If the check fails, use a smaller ROI, increase `SCALE_METERS`, or split the area into several smaller runs.
+
 ## Sentinel-1 GRD Preprocessing
 
 The Earth Engine preprocessing mirrors the GRD/GEE workflow:
@@ -68,6 +70,7 @@ The Earth Engine preprocessing mirrors the GRD/GEE workflow:
 - dB to linear conversion with `pow(10, db / 10)`;
 - selected polarization, usually `VV`;
 - clip/export to the common area;
+- direct-download size check;
 - download at 10 m and `EPSG:4326` by default.
 
 After download, the notebook verifies that the two GeoTIFFs have the same CRS, affine transform, width, height, valid-mask shape, and nodata handling.

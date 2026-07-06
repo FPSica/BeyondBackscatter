@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable
 
 S1_GRD_COLLECTION = "COPERNICUS/S1_GRD"
+DEFAULT_MAX_DIRECT_DOWNLOAD_BYTES = 48 * 1024 * 1024
 
 
 def require_ee():
@@ -273,6 +274,42 @@ def common_valid_area(
     }
 
 
+def estimate_direct_download_bytes(region, scale: int = 10, bytes_per_pixel: int = 4) -> dict:
+    """Estimate direct GeoTIFF download size for one single-band image."""
+
+    geometry_area_m2 = float(region.area(1).getInfo() or 0.0)
+    grid_area_m2 = float(region.bounds(1).area(1).getInfo() or geometry_area_m2)
+    estimated_pixels = grid_area_m2 / (float(scale) * float(scale))
+    estimated_bytes = estimated_pixels * int(bytes_per_pixel)
+    return {
+        "geometry_area_m2": geometry_area_m2,
+        "grid_bounds_area_m2": grid_area_m2,
+        "estimated_pixels": estimated_pixels,
+        "estimated_bytes": estimated_bytes,
+        "estimated_mebibytes": estimated_bytes / (1024 * 1024),
+    }
+
+
+def assert_direct_download_size(
+    region,
+    scale: int = 10,
+    max_bytes: int = DEFAULT_MAX_DIRECT_DOWNLOAD_BYTES,
+    bytes_per_pixel: int = 4,
+) -> dict:
+    """Raise a friendly error before Earth Engine direct-download URL limits are exceeded."""
+
+    estimate = estimate_direct_download_bytes(region, scale=scale, bytes_per_pixel=bytes_per_pixel)
+    if estimate["estimated_bytes"] > int(max_bytes):
+        max_mib = int(max_bytes) / (1024 * 1024)
+        raise ValueError(
+            "The selected common region is too large for Earth Engine direct download. "
+            f"Estimated one-band GeoTIFF size is {estimate['estimated_mebibytes']:.1f} MiB, "
+            f"but the direct-download limit is about {max_mib:.1f} MiB. "
+            "Use a smaller ROI, increase SCALE_METERS, or split the area into smaller runs."
+        )
+    return estimate
+
+
 def selected_linear_sigma0_image(image_db, polarization: str, common_region, common_valid_mask):
     """Convert one selected S1 GRD image from dB to linear sigma0 and apply the shared mask."""
 
@@ -317,6 +354,7 @@ def download_selected_sigma0_pair(
     polarization: str = "VV",
     scale: int = 10,
     crs: str = "EPSG:4326",
+    max_direct_download_bytes: int = DEFAULT_MAX_DIRECT_DOWNLOAD_BYTES,
 ):
     """Download two selected single-scene linear sigma0 GeoTIFFs over their common valid area."""
 
@@ -335,6 +373,11 @@ def download_selected_sigma0_pair(
     )
     t2_image = selected_linear_sigma0_image(
         common["image_t2_db"], polarization, common["common_region"], common["common_valid_mask"]
+    )
+    download_estimate = assert_direct_download_size(
+        common["common_region"],
+        scale=scale,
+        max_bytes=max_direct_download_bytes,
     )
     t1_path = output_dir / f"sigma0_{polarization}_t1_linear.tif"
     t2_path = output_dir / f"sigma0_{polarization}_t2_linear.tif"
@@ -359,4 +402,5 @@ def download_selected_sigma0_pair(
         for key, value in common.items()
         if key not in {"image_t1_db", "image_t2_db", "common_region", "common_valid_mask"}
     }
+    common_summary["direct_download_estimate"] = download_estimate
     return t1_path, t2_path, common_summary
