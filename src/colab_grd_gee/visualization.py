@@ -85,18 +85,50 @@ def make_pseudo_natural_rgb(
         coh = coh.copy()
         coh[np.asarray(mask, dtype=bool)] = 0.0
 
-    water = (1.0 - avg_amp) * (1.0 - 0.35 * coh)
-    decorrelated = (1.0 - coh) * avg_amp
-    stable_bright = avg_amp * (0.70 + coherence_brightness * coh)
+    water = np.power(1.0 - avg_amp, 1.65) * (0.75 + 0.25 * coh)
+    decorrelated = np.power(1.0 - coh, 1.15) * (1.0 - 0.75 * water) * (0.35 + 0.65 * avg_amp)
+    stable = avg_amp * coh
+    changed = change * (1.0 - 0.65 * water) * (0.35 + 0.65 * avg_amp)
 
-    red = stable_bright * 0.96 + change_redness * change
-    green = stable_bright * 0.88 + green_strength * decorrelated
-    blue = stable_bright * 0.92 + water_strength * water
-    rgb = np.dstack([red, green, blue])
+    brightness = np.clip(0.05 + np.power(avg_amp, 0.88) * (0.62 + coherence_brightness * coh), 0.0, 1.0)
 
-    channel_means = np.maximum(np.mean(rgb.reshape(-1, 3), axis=0), EPS)
-    rgb = rgb / channel_means * float(np.mean(channel_means))
-    rgb = apply_gamma(np.clip(rgb, 0.0, 1.0), gamma=gamma)
+    # Start from a muted gray/tan SAR brightness image, then add controlled semantic tints.
+    red = brightness * (1.02 + 0.10 * stable)
+    green = brightness * (0.97 + 0.03 * stable)
+    blue = brightness * (0.91 + 0.05 * stable)
+
+    red *= 1.0 - 0.70 * water_strength * water
+    green *= 1.0 - 0.55 * water_strength * water
+    blue += 0.55 * water_strength * water * (1.0 - blue)
+
+    red *= 1.0 - 0.30 * green_strength * decorrelated
+    green += 0.38 * green_strength * decorrelated * (1.0 - green)
+    blue *= 1.0 - 0.18 * green_strength * decorrelated
+
+    red += 0.55 * change_redness * changed * (1.0 - red)
+    green *= 1.0 - 0.10 * change_redness * changed
+    blue *= 1.0 - 0.20 * change_redness * changed
+
+    rgb = np.clip(np.dstack([red, green, blue]), 0.0, 1.0).astype(np.float32)
+
+    valid = np.all(np.isfinite(rgb), axis=2)
+    if mask is not None:
+        valid &= ~np.asarray(mask, dtype=bool)
+    if np.any(valid):
+        channel_means = np.maximum(np.mean(rgb[valid], axis=0), EPS)
+        target = float(np.mean(channel_means))
+        scale = np.clip(target / channel_means, 0.86, 1.14)
+        rgb = np.clip(rgb * scale.reshape(1, 1, 3), 0.0, 1.0)
+
+        luminance = np.clip(
+            0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2],
+            0.0,
+            1.0,
+        )
+        stretched_luminance = percentile_normalize(luminance, 1.0, 99.0, mask=mask)
+        rgb = np.clip(rgb * (stretched_luminance / np.maximum(luminance, EPS))[..., None], 0.0, 1.0)
+
+    rgb = apply_gamma(rgb, gamma=gamma)
     if mask is not None:
         rgb = rgb.copy()
         rgb[np.asarray(mask, dtype=bool)] = 0.0
