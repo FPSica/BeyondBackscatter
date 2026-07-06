@@ -43,6 +43,40 @@ def assert_aligned(profile_a: dict[str, Any], profile_b: dict[str, Any], shape_a
     return True
 
 
+def validate_matching_geotiffs(path_a: str | Path, path_b: str | Path) -> dict[str, Any]:
+    """Validate that two downloaded GeoTIFFs share grid, CRS, transform, and mask shape."""
+
+    import rasterio
+
+    with rasterio.open(path_a) as src_a, rasterio.open(path_b) as src_b:
+        shape_a = (src_a.height, src_a.width)
+        shape_b = (src_b.height, src_b.width)
+        assert_aligned(src_a.profile, src_b.profile, shape_a, shape_b)
+        mask_a = src_a.read_masks(1)
+        mask_b = src_b.read_masks(1)
+        if mask_a.shape != mask_b.shape:
+            raise ValueError(f"Raster valid-mask shape mismatch: {mask_a.shape} vs {mask_b.shape}.")
+        nodata_a = src_a.nodata
+        nodata_b = src_b.nodata
+        if nodata_a != nodata_b:
+            raise ValueError(f"Raster nodata mismatch: {nodata_a} vs {nodata_b}.")
+        valid_a = int(np.count_nonzero(mask_a))
+        valid_b = int(np.count_nonzero(mask_b))
+        common_valid = int(np.count_nonzero((mask_a > 0) & (mask_b > 0)))
+        if common_valid == 0:
+            raise ValueError("Downloaded rasters have no shared valid pixels.")
+        return {
+            "shape": shape_a,
+            "crs": str(src_a.crs),
+            "transform": tuple(src_a.transform),
+            "nodata": nodata_a,
+            "valid_pixels_t1": valid_a,
+            "valid_pixels_t2": valid_b,
+            "common_valid_pixels": common_valid,
+            "bounds": tuple(src_a.bounds),
+        }
+
+
 def save_metadata_json(path: str | Path, metadata: dict[str, Any]) -> Path:
     path = Path(path)
     ensure_dir(path.parent)

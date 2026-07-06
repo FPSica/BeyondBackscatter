@@ -51,7 +51,7 @@ DATE2_START = "2025-06-24"
 DATE2_END   = "2025-06-25"
 ```
 
-The notebook searches `COPERNICUS/S1_GRD` for matching acquisitions and prints image ID, date/time, orbit pass, relative orbit, platform, polarization list, and instrument mode.
+The notebook searches `COPERNICUS/S1_GRD` for matching acquisitions and prints image index, image ID, date/time, orbit pass, relative orbit, platform, polarization list, instrument mode, and approximate ROI coverage. The user then selects exactly one image for period 1 and exactly one image for period 2. `RELATIVE_ORBIT` can stay empty; when it is empty, no relative-orbit filter is applied.
 
 ## Sentinel-1 GRD Preprocessing
 
@@ -63,11 +63,14 @@ The Earth Engine preprocessing mirrors the GRD/GEE workflow:
 - `orbitProperties_pass == "ASCENDING"` by default;
 - optional relative orbit filter;
 - date-window filter;
-- `.median()` composite;
+- one selected single Sentinel-1 GRD image per period;
+- common valid area from ROI, image 1 footprint/mask, and image 2 footprint/mask;
 - dB to linear conversion with `pow(10, db / 10)`;
 - selected polarization, usually `VV`;
-- clip to ROI;
+- clip/export to the common area;
 - download at 10 m and `EPSG:4326` by default.
+
+After download, the notebook verifies that the two GeoTIFFs have the same CRS, affine transform, width, height, valid-mask shape, and nodata handling.
 
 Downloaded inputs are saved under:
 
@@ -173,6 +176,8 @@ Important files include:
 - `outputs/beyond_backscatter_outputs.zip`
 
 The RGB files are SAR/coherence visualization products. They are not true optical images.
+
+Predicted coherence is displayed with a grayscale color map from 0 to 1.
 
 ## Security Notes
 

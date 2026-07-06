@@ -17,12 +17,14 @@ The notebook:
 3. authenticates Google Earth Engine;
 4. lets the user draw or define an ROI;
 5. searches Sentinel-1 GRD acquisitions for two date windows;
-6. downloads linear sigma0 GeoTIFFs from GEE;
-7. loads the GRD/GEE model from Hugging Face Hub, Google Drive, or a local directory;
-8. runs tiled TensorFlow/Keras inference with the released GRD/GEE Keras weights;
-9. exports predicted coherence and SAR/coherence RGB visualizations.
+6. lets the user select exactly one image per period;
+7. verifies shared valid coverage and downloads linear sigma0 GeoTIFFs over the common area;
+8. loads the GRD/GEE model from Hugging Face Hub, Google Drive, or a local directory;
+9. runs tiled TensorFlow/Keras inference with the released GRD/GEE Keras weights;
+10. exports grayscale predicted coherence and SAR/coherence RGB visualizations.
 
 The notebook uses Sentinel-1 GRD data from GEE. It does not use the SLC inference path.
+It does not compute or recommend temporal baselines.
 
 ## Model Files Expected On Hugging Face
 
@@ -91,9 +93,9 @@ The script does not hardcode tokens. It relies on `hf auth login`, environment v
 2. Use a GPU runtime.
 3. Set `GEE_PROJECT_ID`.
 4. Start with a small ROI.
-5. Configure two Sentinel-1 dates and filters.
+5. Configure two Sentinel-1 dates and filters. Leave `RELATIVE_ORBIT` empty if you do not want to filter by relative orbit.
 6. Keep `MODEL_SOURCE = "huggingface"` once the public model repo is released.
-7. Run all cells.
+7. Review the acquisition tables, choose one image in each dropdown, and run the remaining cells.
 
 Outputs are saved under `outputs/`.
 
@@ -110,5 +112,7 @@ Do not hardcode:
 For private Hugging Face repositories, set `HF_TOKEN` through Colab secrets or an environment variable. Public repositories do not require a token.
 
 ## Visualization Note
+
+Predicted coherence is displayed in grayscale with values clipped to `[0, 1]`.
 
 The pseudo-natural RGB output is a SAR/coherence visualization derived from backscatter amplitudes and predicted coherence. It is not a true optical image and should not be interpreted as optical reflectance.

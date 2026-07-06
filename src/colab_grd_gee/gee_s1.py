@@ -123,6 +123,7 @@ def list_acquisitions(
 
     from datetime import datetime
 
+    ee = require_ee()
     collection = s1_grd_collection(
         roi=roi,
         start_date=start_date,
@@ -133,9 +134,22 @@ def list_acquisitions(
         instrument_mode=instrument_mode,
     ).sort("system:time_start")
     count = int(collection.size().getInfo())
+    roi_area = ee.Number(roi.area(1)).max(1)
+
+    def add_coverage(image):
+        intersection = image.geometry().intersection(roi, ee.ErrorMargin(1))
+        area_m2 = intersection.area(1)
+        return image.set(
+            {
+                "roi_intersection_area_km2": area_m2.divide(1e6),
+                "roi_coverage_percent": area_m2.divide(roi_area).multiply(100),
+            }
+        )
+
+    collection = collection.map(add_coverage)
     features = collection.limit(limit).getInfo().get("features", [])
     records = []
-    for feature in features:
+    for index, feature in enumerate(features):
         props = feature.get("properties", {})
         timestamp_ms = props.get("system:time_start")
         time_utc = None
@@ -143,6 +157,7 @@ def list_acquisitions(
             time_utc = datetime.utcfromtimestamp(timestamp_ms / 1000).strftime("%Y-%m-%d %H:%M:%S")
         records.append(
             {
+                "index": index,
                 "id": feature.get("id"),
                 "time_utc": time_utc,
                 "orbit_pass": props.get("orbitProperties_pass"),
@@ -150,9 +165,45 @@ def list_acquisitions(
                 "platform": props.get("platform_number"),
                 "polarizations": props.get("transmitterReceiverPolarisation"),
                 "instrument_mode": props.get("instrumentMode"),
+                "roi_coverage_percent": props.get("roi_coverage_percent"),
+                "roi_intersection_area_km2": props.get("roi_intersection_area_km2"),
             }
         )
     return records, count, collection
+
+
+def select_acquisition(records: list[dict], selected_index: int | str, label: str = "image") -> dict:
+    """Return exactly one acquisition record by displayed index."""
+
+    if not records:
+        raise ValueError(f"No Sentinel-1 acquisitions are available for {label}.")
+    try:
+        index = int(selected_index)
+    except Exception as exc:
+        raise ValueError(f"Select {label} using one of the displayed integer indexes.") from exc
+    if index < 0 or index >= len(records):
+        raise IndexError(f"Selected {label} index {index} is outside the available range 0..{len(records) - 1}.")
+    record = records[index]
+    if not record.get("id"):
+        raise ValueError(f"Selected {label} has no Earth Engine image ID.")
+    return record
+
+
+def selected_image_summary(record: dict, polarization: str) -> dict:
+    """Small public-safe metadata summary for one selected acquisition."""
+
+    return {
+        "image_id": record.get("id"),
+        "acquisition_datetime_utc": record.get("time_utc"),
+        "orbit_pass": record.get("orbit_pass"),
+        "relative_orbit": record.get("relative_orbit"),
+        "platform": record.get("platform"),
+        "polarization": polarization,
+        "available_polarizations": record.get("polarizations"),
+        "instrument_mode": record.get("instrument_mode"),
+        "roi_coverage_percent": record.get("roi_coverage_percent"),
+        "roi_intersection_area_km2": record.get("roi_intersection_area_km2"),
+    }
 
 
 def to_linear(image, polarization: str):
@@ -163,44 +214,90 @@ def to_linear(image, polarization: str):
     return image.addBands(linear, None, True)
 
 
-def median_linear_sigma0_image(
+def common_valid_area(
     roi,
-    start_date: str,
-    end_date: str,
-    polarization: str = "VV",
-    orbit_pass: str = "ASCENDING",
-    relative_orbit: int | str | None = None,
-    instrument_mode: str = "IW",
+    image1_id: str,
+    image2_id: str,
+    polarization: str,
+    scale: int = 10,
+    crs: str = "EPSG:4326",
+    min_valid_pixels: int = 4,
 ):
-    """Filter Sentinel-1 GRD, median composite, convert dB to linear sigma0, and clip."""
+    """Build and validate the shared valid region for two selected S1 GRD images."""
 
-    collection = s1_grd_collection(
-        roi=roi,
-        start_date=start_date,
-        end_date=end_date,
-        polarization=polarization,
-        orbit_pass=orbit_pass,
-        relative_orbit=relative_orbit,
-        instrument_mode=instrument_mode,
+    ee = require_ee()
+    image_t1_db = ee.Image(image1_id).select(polarization)
+    image_t2_db = ee.Image(image2_id).select(polarization)
+    common_region = (
+        roi.intersection(ee.Image(image1_id).geometry(), ee.ErrorMargin(1))
+        .intersection(ee.Image(image2_id).geometry(), ee.ErrorMargin(1))
     )
-    count = int(collection.size().getInfo())
-    if count == 0:
+    common_mask = image_t1_db.mask().multiply(image_t2_db.mask()).gt(0).rename("common_valid_mask")
+    common_area_m2 = float(common_region.area(1).getInfo() or 0.0)
+    if common_area_m2 <= 0:
         raise ValueError(
-            "No Sentinel-1 GRD images matched "
-            f"{start_date} to {end_date}, pol={polarization}, pass={orbit_pass}, "
-            f"relative_orbit={relative_orbit}, instrument_mode={instrument_mode}."
+            "The selected images do not share a footprint over the ROI. Choose different images, "
+            "enlarge or change the ROI, leave RELATIVE_ORBIT unspecified, or expand the date windows."
         )
-    sigma0_db = collection.median()
-    sigma0_linear = to_linear(sigma0_db, polarization)
-    return sigma0_linear.select(polarization).clip(roi).rename(f"sigma0_{polarization}_linear")
+    valid_area_info = (
+        ee.Image.pixelArea()
+        .updateMask(common_mask)
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=common_region,
+            scale=scale,
+            crs=crs,
+            maxPixels=1e13,
+            bestEffort=True,
+            tileScale=4,
+        )
+        .getInfo()
+    )
+    valid_area_m2 = float((valid_area_info or {}).get("area") or 0.0)
+    min_area_m2 = max(float(min_valid_pixels) * float(scale) * float(scale), 1.0)
+    if valid_area_m2 < min_area_m2:
+        raise ValueError(
+            "The selected images do not share enough valid coverage over the ROI. "
+            "Choose different images, enlarge or change the ROI, leave RELATIVE_ORBIT unspecified, "
+            "or expand the date windows."
+        )
+    return {
+        "image_t1_db": image_t1_db,
+        "image_t2_db": image_t2_db,
+        "common_region": common_region,
+        "common_valid_mask": common_mask,
+        "common_region_area_m2": common_area_m2,
+        "valid_overlap_area_m2": valid_area_m2,
+        "estimated_valid_overlap_pixels": valid_area_m2 / (float(scale) * float(scale)),
+        "common_region_geojson": common_region.getInfo(),
+    }
 
 
-def download_image(image, filename: str | Path, roi, scale: int = 10, crs: str = "EPSG:4326") -> Path:
+def selected_linear_sigma0_image(image_db, polarization: str, common_region, common_valid_mask):
+    """Convert one selected S1 GRD image from dB to linear sigma0 and apply the shared mask."""
+
+    ee = require_ee()
+    linear = ee.Image(10.0).pow(image_db.select(polarization).divide(10.0)).rename(
+        f"sigma0_{polarization}_linear"
+    )
+    return linear.updateMask(common_valid_mask).clip(common_region)
+
+
+def download_image(
+    image,
+    filename: str | Path,
+    roi,
+    scale: int = 10,
+    crs: str = "EPSG:4326",
+    force_common_grid: bool = False,
+) -> Path:
     """Download an Earth Engine image as a single-band GeoTIFF."""
 
     geemap = require_geemap()
     filename = Path(filename)
     filename.parent.mkdir(parents=True, exist_ok=True)
+    if force_common_grid:
+        image = image.reproject(crs=crs, scale=scale)
     geemap.ee_export_image(
         image,
         filename=str(filename),
@@ -212,32 +309,54 @@ def download_image(image, filename: str | Path, roi, scale: int = 10, crs: str =
     return filename
 
 
-def download_sigma0_pair(
+def download_selected_sigma0_pair(
     roi,
     output_dir: str | Path,
-    date1_start: str,
-    date1_end: str,
-    date2_start: str,
-    date2_end: str,
+    image1_id: str,
+    image2_id: str,
     polarization: str = "VV",
-    orbit_pass: str = "ASCENDING",
-    relative_orbit: int | str | None = None,
-    instrument_mode: str = "IW",
     scale: int = 10,
     crs: str = "EPSG:4326",
 ):
-    """Download the two linear sigma0 GeoTIFFs required by GRD/GEE inference."""
+    """Download two selected single-scene linear sigma0 GeoTIFFs over their common valid area."""
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    t1_image = median_linear_sigma0_image(
-        roi, date1_start, date1_end, polarization, orbit_pass, relative_orbit, instrument_mode
+    common = common_valid_area(
+        roi=roi,
+        image1_id=image1_id,
+        image2_id=image2_id,
+        polarization=polarization,
+        scale=scale,
+        crs=crs,
     )
-    t2_image = median_linear_sigma0_image(
-        roi, date2_start, date2_end, polarization, orbit_pass, relative_orbit, instrument_mode
+    t1_image = selected_linear_sigma0_image(
+        common["image_t1_db"], polarization, common["common_region"], common["common_valid_mask"]
+    )
+    t2_image = selected_linear_sigma0_image(
+        common["image_t2_db"], polarization, common["common_region"], common["common_valid_mask"]
     )
     t1_path = output_dir / f"sigma0_{polarization}_t1_linear.tif"
     t2_path = output_dir / f"sigma0_{polarization}_t2_linear.tif"
-    download_image(t1_image, t1_path, roi=roi, scale=scale, crs=crs)
-    download_image(t2_image, t2_path, roi=roi, scale=scale, crs=crs)
-    return t1_path, t2_path
+    download_image(
+        t1_image,
+        t1_path,
+        roi=common["common_region"],
+        scale=scale,
+        crs=crs,
+        force_common_grid=True,
+    )
+    download_image(
+        t2_image,
+        t2_path,
+        roi=common["common_region"],
+        scale=scale,
+        crs=crs,
+        force_common_grid=True,
+    )
+    common_summary = {
+        key: value
+        for key, value in common.items()
+        if key not in {"image_t1_db", "image_t2_db", "common_region", "common_valid_mask"}
+    }
+    return t1_path, t2_path, common_summary
