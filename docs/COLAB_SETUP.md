@@ -51,7 +51,7 @@ DATE2_START = "2025-06-24"
 DATE2_END   = "2025-06-25"
 ```
 
-The notebook searches `COPERNICUS/S1_GRD` for matching acquisitions and prints image index, image ID, date/time, orbit pass, relative orbit, platform, polarization list, instrument mode, and approximate ROI coverage. The user then selects exactly one image for period 1 and exactly one image for period 2. `RELATIVE_ORBIT` can stay empty; when it is empty, no relative-orbit filter is applied.
+The notebook searches `COPERNICUS/S1_GRD` for matching acquisitions and prints image index, image ID, date/time, orbit pass, relative orbit, platform, polarization list, instrument mode, and approximate ROI coverage. The user then selects exactly one image for period 1 and exactly one image for period 2. `RELATIVE_ORBIT` can stay empty; when it is empty, no relative-orbit filter is applied during search. The final selected image pair must still have the same relative orbit number.
 
 Earth Engine direct GeoTIFF downloads are limited to roughly 48 MiB per request. The notebook checks the estimated download size before requesting the GeoTIFF URLs. If the check fails, use a smaller ROI, increase `SCALE_METERS`, or split the area into several smaller runs.
 

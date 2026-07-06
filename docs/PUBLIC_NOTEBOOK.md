@@ -93,9 +93,10 @@ The script does not hardcode tokens. It relies on `hf auth login`, environment v
 2. Use a GPU runtime.
 3. Set `GEE_PROJECT_ID`.
 4. Start with a small ROI.
-5. Configure two Sentinel-1 dates and filters. Leave `RELATIVE_ORBIT` empty if you do not want to filter by relative orbit.
+5. Configure two Sentinel-1 dates and filters. Leave `RELATIVE_ORBIT` empty if you do not want to filter by relative orbit during search.
 6. Keep `MODEL_SOURCE = "huggingface"` once the public model repo is released.
-7. Review the acquisition tables, choose one image in each dropdown, and run the remaining cells.
+7. Review the acquisition tables, choose one image in each dropdown, and make sure both selected images have the same relative orbit number.
+8. Run the remaining cells.
 
 Outputs are saved under `outputs/`.
 
